@@ -12,29 +12,48 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret_in_production';
 
 // ---- Mock "database" ----
-const users = [
-  {
-    id: 1,
-    name: 'John Doe',
-    email: 'john@example.com',
-    passwordHash: bcrypt.hashSync('password123', 8),
-    avatar: 'https://i.pravatar.cc/150?img=1',
-  },
-  {
-    id: 2,
-    name: 'Jane Smith',
-    email: 'jane@example.com',
-    passwordHash: bcrypt.hashSync('password123', 8),
-    avatar: 'https://i.pravatar.cc/150?img=2',
-  },
-  {
-    id: 3,
-    name: 'Mike Johnson',
-    email: 'mike@example.com',
-    passwordHash: bcrypt.hashSync('password123', 8),
-    avatar: 'https://i.pravatar.cc/150?img=3',
-  },
+const DEFAULT_PASSWORD_HASH = bcrypt.hashSync('password123', 8);
+
+const FIRST_NAMES = [
+  'John', 'Jane', 'Mike', 'Emily', 'Chris', 'Sarah', 'David', 'Laura',
+  'James', 'Anna', 'Robert', 'Maria', 'William', 'Linda', 'Daniel', 'Sophia',
+  'Matthew', 'Olivia', 'Andrew', 'Emma', 'Joseph', 'Ava', 'Ryan', 'Mia',
+  'Brandon', 'Grace', 'Justin', 'Chloe', 'Kevin', 'Ella', 'Aaron', 'Zoe',
+  'Nathan', 'Lily', 'Tyler', 'Hannah', 'Jacob', 'Natalie', 'Ethan', 'Victoria',
 ];
+const LAST_NAMES = [
+  'Doe', 'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller',
+  'Davis', 'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Wilson', 'Anderson',
+  'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin', 'Lee', 'Perez', 'Thompson',
+  'White', 'Harris', 'Sanchez', 'Clark', 'Ramirez', 'Lewis', 'Robinson', 'Walker',
+  'Young', 'Allen', 'King', 'Wright', 'Scott', 'Torres', 'Nguyen', 'Hill', 'Flores',
+];
+
+function buildSeedUsers(count) {
+  const seeded = [
+    { name: 'John Doe', email: 'john@example.com' },
+    { name: 'Jane Smith', email: 'jane@example.com' },
+    { name: 'Mike Johnson', email: 'mike@example.com' },
+  ];
+  for (let i = seeded.length; i < count; i++) {
+    const first = FIRST_NAMES[i % FIRST_NAMES.length];
+    const last = LAST_NAMES[Math.floor(i / FIRST_NAMES.length) % LAST_NAMES.length];
+    seeded.push({
+      name: `${first} ${last}`,
+      email: `${first.toLowerCase()}.${last.toLowerCase()}${i}@example.com`,
+    });
+  }
+  return seeded.map((u, idx) => ({
+    id: idx + 1,
+    name: u.name,
+    email: u.email,
+    passwordHash: DEFAULT_PASSWORD_HASH,
+    avatar: `https://i.pravatar.cc/150?img=${(idx % 70) + 1}`,
+  }));
+}
+
+const SEED_USER_COUNT = Number(process.env.SEED_USER_COUNT) || 50;
+const users = buildSeedUsers(SEED_USER_COUNT);
 
 // ---- Auth middleware ----
 function authenticate(req, res, next) {
