@@ -2,7 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
 
 const app = express();
 app.use(cors());
@@ -11,9 +10,11 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret_in_production';
 
-// ---- Mock "database" ----
-const DEFAULT_PASSWORD_HASH = bcrypt.hashSync('password123', 8);
+// ---- Mock OTP auth (test credentials) ----
+const TEST_PHONE = '9876543210';
+const TEST_OTP = '123456';
 
+// ---- Mock "database" ----
 const FIRST_NAMES = [
   'John', 'Jane', 'Mike', 'Emily', 'Chris', 'Sarah', 'David', 'Laura',
   'James', 'Anna', 'Robert', 'Maria', 'William', 'Linda', 'Daniel', 'Sophia',
@@ -47,7 +48,7 @@ function buildSeedUsers(count) {
     id: idx + 1,
     name: u.name,
     email: u.email,
-    passwordHash: DEFAULT_PASSWORD_HASH,
+    phone: idx === 0 ? TEST_PHONE : `9${String(1000000000 + idx).slice(0, 9)}`,
     avatar: `https://i.pravatar.cc/150?img=${(idx % 70) + 1}`,
   }));
 }
@@ -76,40 +77,89 @@ app.get('/', (req, res) => {
   res.json({
     message: 'Flutter Test API is running',
     endpoints: {
-      login: 'POST /api/login',
+      sendOtp: 'POST /api/send-otp',
+      verifyOtp: 'POST /api/verify-otp',
       profile: 'GET /api/profile (requires Bearer token)',
-      users: 'GET /api/users (requires Bearer token)',
+      updateProfile: 'PATCH /api/profile (requires Bearer token)',
+      users: 'GET /api/users?page=1&limit=10 (requires Bearer token)',
     },
   });
 });
 
-// POST /api/login
-app.post('/api/login', (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) {
-    return res.status(400).json({ success: false, message: 'Email and password are required' });
+// POST /api/send-otp
+app.post('/api/send-otp', (req, res) => {
+  const { phone } = req.body || {};
+  if (!phone) {
+    return res.status(400).json({ success: false, message: 'Phone number is required' });
   }
-  const user = users.find((u) => u.email.toLowerCase() === String(email).toLowerCase());
-  if (!user || !bcrypt.compareSync(password, user.passwordHash)) {
-    return res.status(401).json({ success: false, message: 'Invalid email or password' });
+  // Mock: always "sends" successfully. Use phone 9876543210 with OTP 123456 to verify.
+  res.json({ success: true, message: 'OTP sent successfully' });
+});
+
+// POST /api/verify-otp
+app.post('/api/verify-otp', (req, res) => {
+  const { phone, otp } = req.body || {};
+  if (!phone || !otp) {
+    return res.status(400).json({ success: false, message: 'Phone number and OTP are required' });
   }
-  const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-  const { passwordHash, ...userSafe } = user;
-  res.json({ success: true, token, user: userSafe });
+  if (phone !== TEST_PHONE || otp !== TEST_OTP) {
+    return res.status(401).json({ success: false, message: 'Invalid phone number or OTP' });
+  }
+  const user = users.find((u) => u.phone === phone);
+  const token = jwt.sign({ id: user.id, phone: user.phone }, JWT_SECRET, { expiresIn: '7d' });
+  res.json({ success: true, token, user });
 });
 
 // GET /api/profile
 app.get('/api/profile', authenticate, (req, res) => {
   const user = users.find((u) => u.id === req.userId);
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-  const { passwordHash, ...userSafe } = user;
-  res.json({ success: true, user: userSafe });
+  res.json({ success: true, user });
+});
+
+// PATCH /api/profile
+app.patch('/api/profile', authenticate, (req, res) => {
+  const user = users.find((u) => u.id === req.userId);
+  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+  const { name, email, phone, avatar } = req.body || {};
+
+  if (email !== undefined) {
+    const emailTaken = users.some(
+      (u) => u.id !== user.id && u.email.toLowerCase() === String(email).toLowerCase()
+    );
+    if (emailTaken) {
+      return res.status(409).json({ success: false, message: 'Email already in use' });
+    }
+    user.email = email;
+  }
+  if (phone !== undefined) {
+    const phoneTaken = users.some((u) => u.id !== user.id && u.phone === phone);
+    if (phoneTaken) {
+      return res.status(409).json({ success: false, message: 'Phone number already in use' });
+    }
+    user.phone = phone;
+  }
+  if (name !== undefined) user.name = name;
+  if (avatar !== undefined) user.avatar = avatar;
+
+  res.json({ success: true, user });
 });
 
 // GET /api/users
 app.get('/api/users', authenticate, (req, res) => {
-  const usersSafe = users.map(({ passwordHash, ...u }) => u);
-  res.json({ success: true, users: usersSafe });
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.max(1, parseInt(req.query.limit, 10) || 10);
+  const total = users.length;
+  const totalPages = Math.ceil(total / limit);
+  const start = (page - 1) * limit;
+  const pageUsers = users.slice(start, start + limit);
+
+  res.json({
+    success: true,
+    users: pageUsers,
+    pagination: { page, limit, total, totalPages },
+  });
 });
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
